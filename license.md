@@ -76,6 +76,3 @@ This license is incompatible with:
 - Trademark protected under common law rights.  
 - Violations actionable without formal registration.  
 - Governing law: United States.
---- 
-
-Feel free to modify it further to suit your specific needs!
