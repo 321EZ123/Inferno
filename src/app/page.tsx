@@ -1,33 +1,67 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Search, Flame, Shield, Zap, Image, ShoppingBag, Video, Newspaper, Map, Book, Plane, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import axios from 'axios';
+import AirportInput from '@/components/AirportInput';
 
 interface SearchResult {
   title: string;
   link: string;
   snippet?: string;
   displayed_link?: string;
-  // Image result properties
   original?: string;
   thumbnail?: string;
   source?: string;
-  // Video result properties
   duration?: string;
   platform?: string;
-  // News result properties
   date?: string;
   source_name?: string;
-  // Shopping result properties
   price?: string;
   currency?: string;
   rating?: number;
   reviews?: number;
-  // Maps result properties
   address?: string;
   phone?: string;
   rating_display?: string;
+  website?: string;
+  type?: string;
+  types?: string[];
+  hours?: string;
+  open_state?: string;
+  gps_coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  place_id?: string;
+  description?: string;
+  service_options?: Record<string, boolean>;
+  authors?: string[];
+  publication_date?: string;
+  publisher?: string;
+  pages?: number;
+  isbn?: string;
+  departure_airport?: { name?: string; id?: string; time?: string };
+  arrival_airport?: { name?: string; id?: string; time?: string };
+  flights?: Array<{
+    departure_airport?: { name?: string; id?: string; time?: string };
+    arrival_airport?: { name?: string; id?: string; time?: string };
+    duration?: number;
+    airline?: string;
+    airline_logo?: string;
+    flight_number?: string;
+    travel_class?: string;
+  }>;
+  layovers?: Array<{ duration?: number; name?: string; id?: string }>;
+  total_duration?: number;
+  carbon_emissions?: { this_flight?: number; typical_for_this_route?: number; difference_percent?: number };
+  departure_token?: string;
+  booking_token?: string;
+  booking_options?: Array<{
+    link?: string;
+    name?: string;
+    price?: string;
+  }>;
 }
 
 interface SearchResponse {
@@ -72,6 +106,76 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPrevPage, setHasPrevPage] = useState(false);
+  const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'detecting' | 'detected' | 'denied' | 'error'>('denied');
+  const [flightParams, setFlightParams] = useState({
+    departure: '',
+    arrival: '',
+    outbound_date: '',
+    return_date: '',
+    flight_type: '1', 
+    travel_class: '1', 
+    adults: '1'
+  });
+  const [showFlightForm, setShowFlightForm] = useState(false);
+
+  const getUserLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('error');
+      return;
+    }
+
+    setLocationStatus('detecting');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+        setLocationStatus('detected');
+      },
+      (error) => {
+        console.log('Location access denied or error:', error);
+        setLocationStatus('denied');
+        // Default to NYC coordinates
+        setUserLocation({
+          lat: 40.7455096,
+          lng: -74.0083012
+        });
+      },
+      { timeout: 10000 }
+    );
+  };
+
+  React.useEffect(() => {
+    getUserLocation();
+
+    const today = new Date();
+    const outbound = new Date(today);
+    outbound.setDate(today.getDate() + 7); 
+    const returnDate = new Date(today);
+    returnDate.setDate(today.getDate() + 14);
+
+    setFlightParams(prev => ({
+      ...prev,
+      outbound_date: outbound.toISOString().split('T')[0],
+      return_date: returnDate.toISOString().split('T')[0]
+    }));
+  }, []);
+
+  React.useEffect(() => {
+    const today = new Date();
+    const outbound = new Date(today);
+    outbound.setDate(today.getDate() + 7);
+    const returnDate = new Date(today);
+    returnDate.setDate(today.getDate() + 14);
+
+    setFlightParams(prev => ({
+      ...prev,
+      outbound_date: outbound.toISOString().split('T')[0],
+      return_date: returnDate.toISOString().split('T')[0]
+    }));
+  }, []);
 
   const handleSearch = async (e?: React.FormEvent, searchType: SearchType = activeSearchType, page: number = 1) => {
     if (e) e.preventDefault();
@@ -81,7 +185,6 @@ export default function Home() {
     setSearched(true);
     setError('');
 
-    // If changing search type, update active type and reset to page 1
     if (searchType !== activeSearchType) {
       setActiveSearchType(searchType);
       page = 1;
@@ -93,9 +196,33 @@ export default function Home() {
     try {
       console.log('Frontend: Starting search for:', query, 'Type:', searchType, 'Page:', page);
 
+      const searchParams: Record<string, string | number> = {
+        q: query,
+        type: searchType,
+        page: page
+      };
+
+      if (searchType === 'maps' && userLocation) {
+        searchParams.lat = userLocation.lat.toString();
+        searchParams.lng = userLocation.lng.toString();
+        searchParams.zoom = '14z';
+      }
+
+      if (searchType === 'flights') {
+        if (flightParams.departure) searchParams.departure_id = flightParams.departure;
+        if (flightParams.arrival) searchParams.arrival_id = flightParams.arrival;
+        if (flightParams.outbound_date) searchParams.outbound_date = flightParams.outbound_date;
+        if (flightParams.return_date && flightParams.flight_type === '1') {
+          searchParams.return_date = flightParams.return_date;
+        }
+        searchParams.flight_type = flightParams.flight_type;
+        searchParams.travel_class = flightParams.travel_class;
+        searchParams.adults = flightParams.adults;
+      }
+
       const response = await axios.get('/api/search', {
-        params: { q: query, type: searchType, page: page },
-        timeout: 30000, // Increase timeout
+        params: searchParams,
+        timeout: 30000, 
       });
 
       console.log('Frontend: Search response received:', response.data);
@@ -154,12 +281,17 @@ export default function Home() {
     } else {
       setActiveSearchType(searchType);
     }
+
+    if (searchType === 'flights') {
+      setShowFlightForm(true);
+    } else {
+      setShowFlightForm(false);
+    }
   };
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       handleSearch(undefined, activeSearchType, page);
-      // Scroll to top of results
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -267,6 +399,266 @@ export default function Home() {
       );
     }
 
+    if (activeSearchType === 'maps') {
+      return (
+        <div key={index} className="group bg-zinc-900/50 border border-zinc-800 rounded-lg overflow-hidden hover:border-red-500/30 transition-all duration-200 hover:bg-zinc-900/70">
+          <div className="flex">
+            {result.thumbnail && (
+              <div className="w-24 h-24 flex-shrink-0">
+                <img
+                  src={result.thumbnail}
+                  alt={result.title}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              </div>
+            )}
+            <div className="flex-1 p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <a
+                    href={result.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-lg font-semibold text-blue-400 hover:text-blue-300 hover:underline line-clamp-1"
+                  >
+                    {result.title}
+                  </a>
+
+                  {result.type && (
+                    <p className="text-orange-400 text-sm mt-1">{result.type}</p>
+                  )}
+
+                  <div className="flex items-center space-x-4 mt-2">
+                    {result.rating && (
+                      <div className="flex items-center space-x-1">
+                        <span className="text-yellow-400">★</span>
+                        <span className="text-white font-medium">{result.rating}</span>
+                        {result.reviews && (
+                          <span className="text-zinc-400 text-sm">({result.reviews})</span>
+                        )}
+                      </div>
+                    )}
+
+                    {result.price && (
+                      <span className="text-green-400 font-medium">{result.price}</span>
+                    )}
+                  </div>
+
+                  {result.address && (
+                    <p className="text-zinc-300 text-sm mt-2 flex items-center">
+                      <Map className="h-4 w-4 mr-2 text-red-500" />
+                      {result.address}
+                    </p>
+                  )}
+
+                  {result.phone && (
+                    <p className="text-zinc-300 text-sm mt-1">{result.phone}</p>
+                  )}
+
+                  {result.open_state && (
+                    <p className={`text-sm mt-1 ${
+                      result.open_state.toLowerCase().includes('open')
+                        ? 'text-green-400'
+                        : result.open_state.toLowerCase().includes('closed')
+                        ? 'text-red-400'
+                        : 'text-yellow-400'
+                    }`}>
+                      {result.open_state}
+                    </p>
+                  )}
+
+                  {result.description && (
+                    <p className="text-zinc-400 text-sm mt-2 line-clamp-2">{result.description}</p>
+                  )}
+
+                  {result.service_options && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {Object.entries(result.service_options)
+                        .filter(([_, available]) => available)
+                        .slice(0, 3)
+                        .map(([service, _]) => (
+                          <span
+                            key={service}
+                            className="px-2 py-1 bg-zinc-800 text-zinc-300 text-xs rounded-full"
+                          >
+                            {service.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSearchType === 'books') {
+      return (
+        <div key={index} className="group bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 hover:border-red-500/30 transition-all duration-200 hover:bg-zinc-900/70">
+          <div className="flex items-start space-x-4">
+            {result.thumbnail && (
+              <div className="w-20 h-28 flex-shrink-0">
+                <img
+                  src={result.thumbnail}
+                  alt={result.title}
+                  className="w-full h-full object-cover rounded"
+                  loading="lazy"
+                />
+              </div>
+            )}
+            <div className="flex-1">
+              <a
+                href={result.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-lg font-semibold text-blue-400 hover:text-blue-300 hover:underline line-clamp-2"
+              >
+                {result.title}
+              </a>
+
+              {result.authors && result.authors.length > 0 && (
+                <p className="text-orange-400 text-sm mt-1">
+                  by {result.authors.join(', ')}
+                </p>
+              )}
+
+              <div className="flex items-center space-x-4 mt-2 text-sm text-zinc-300">
+                {result.publisher && (
+                  <span>{result.publisher}</span>
+                )}
+                {result.publication_date && (
+                  <span>• {result.publication_date}</span>
+                )}
+                {result.pages && (
+                  <span>• {result.pages} pages</span>
+                )}
+              </div>
+
+              <p className="text-green-400 text-sm mt-1">{result.displayed_link}</p>
+
+              {result.snippet && (
+                <p className="text-zinc-300 leading-relaxed mt-2">{result.snippet}</p>
+              )}
+
+              {result.isbn && (
+                <p className="text-zinc-400 text-xs mt-2">ISBN: {result.isbn}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSearchType === 'flights') {
+      return (
+        <div key={index} className="group bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 hover:border-red-500/30 transition-all duration-200 hover:bg-zinc-900/70">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                {result.title}
+              </h3>
+
+              <div className="flex items-center space-x-4 mt-2">
+                {result.price && (
+                  <span className="text-green-400 font-bold text-xl">{result.price}</span>
+                )}
+
+                {result.total_duration && (
+                  <span className="text-zinc-300">
+                    {Math.floor(result.total_duration / 60)}h {result.total_duration % 60}m
+                  </span>
+                )}
+              </div>
+
+              {result.carbon_emissions && (
+                <div className="flex items-center space-x-2 mt-2">
+                  <span className="text-xs text-zinc-400">
+                    CO₂: {Math.round((result.carbon_emissions.this_flight || 0) / 1000)}kg
+                  </span>
+                  {result.carbon_emissions.difference_percent !== undefined && (
+                    <span className={`text-xs ${
+                      result.carbon_emissions.difference_percent > 0 ? 'text-red-400' : 'text-green-400'
+                    }`}>
+                      ({result.carbon_emissions.difference_percent > 0 ? '+' : ''}{result.carbon_emissions.difference_percent}% vs typical)
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Multiple booking options if available */}
+              {result.booking_options && result.booking_options.length > 1 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <span className="text-sm text-zinc-400">Book on:</span>
+                  {result.booking_options.slice(0, 3).map((option: { link?: string; name?: string; price?: string }, optionIndex: number) => (
+                    option.link && (
+                      <a
+                        key={optionIndex}
+                        href={option.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs rounded transition-colors"
+                      >
+                        {option.name || 'Book'}
+                        {option.price && ` - ${option.price}`}
+                      </a>
+                    )
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Flight segments */}
+          {result.flights && result.flights.length > 0 && (
+            <div className="space-y-3">
+              {result.flights.map((flight, flightIndex) => (
+                <div key={flightIndex} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
+                  <div className="flex items-center space-x-4">
+                    <div className="text-center">
+                      <div className="font-medium text-white">{flight.departure_airport?.time?.split(' ')[1]}</div>
+                      <div className="text-sm text-zinc-400">{flight.departure_airport?.id}</div>
+                    </div>
+
+                    <div className="flex-1 text-center">
+                      <div className="text-sm text-zinc-400">
+                        {flight.duration ? `${Math.floor(flight.duration / 60)}h ${flight.duration % 60}m` : ''}
+                      </div>
+                      <div className="w-full h-px bg-zinc-600 my-1"></div>
+                      <div className="text-xs text-zinc-500">{flight.airline}</div>
+                    </div>
+
+                    <div className="text-center">
+                      <div className="font-medium text-white">{flight.arrival_airport?.time?.split(' ')[1]}</div>
+                      <div className="text-sm text-zinc-400">{flight.arrival_airport?.id}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Layovers */}
+              {result.layovers && result.layovers.length > 0 && (
+                <div className="text-sm text-zinc-400">
+                  Layovers: {result.layovers.map(layover =>
+                    `${layover.name} (${Math.floor((layover.duration || 0) / 60)}h ${(layover.duration || 0) % 60}m)`
+                  ).join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-green-400 text-sm">{result.displayed_link}</p>
+            {(!result.link || result.link === '#') && (
+              <p className="text-zinc-500 text-xs">Booking not available</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     if (activeSearchType === 'videos') {
       return (
         <div key={index} className="group bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 hover:border-red-500/30 transition-all duration-200 hover:bg-zinc-900/70">
@@ -326,7 +718,6 @@ export default function Home() {
       );
     }
 
-    // Default web/news/books/flights/finance result layout
     return (
       <div key={index} className="group bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 hover:border-red-500/30 transition-all duration-200 hover:bg-zinc-900/70 backdrop-blur">
         <div className="mb-3">
@@ -446,26 +837,223 @@ export default function Home() {
           {/* Search Categories */}
           {searched && (
             <div className="max-w-4xl mx-auto mb-8">
-              <div className="flex items-center space-x-1 overflow-x-auto pb-2">
-                {searchCategories.map((category) => {
-                  const Icon = category.icon;
-                  const isActive = activeSearchType === category.type;
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-1 overflow-x-auto pb-2">
+                  {searchCategories.map((category) => {
+                    const Icon = category.icon;
+                    const isActive = activeSearchType === category.type;
 
-                  return (
-                    <button
-                      key={category.type}
-                      onClick={() => handleCategoryClick(category.type)}
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                        isActive
-                          ? 'bg-red-600 text-white shadow-lg shadow-red-500/20'
-                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
-                      }`}
+                    return (
+                      <button
+                        key={category.type}
+                        onClick={() => handleCategoryClick(category.type)}
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                          isActive
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-500/20'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{category.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Location Status for Maps */}
+                {activeSearchType === 'maps' && (
+                  <div className="flex items-center space-x-2 text-xs text-zinc-400">
+                    {locationStatus === 'detecting' && (
+                      <>
+                        <div className="w-3 h-3 border border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Detecting location...</span>
+                      </>
+                    )}
+                    {locationStatus === 'detected' && (
+                      <>
+                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <span>Location detected</span>
+                      </>
+                    )}
+                    {locationStatus === 'denied' && (
+                      <>
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                        <span>Using default location (NYC)</span>
+                        <button
+                          onClick={getUserLocation}
+                          className="text-blue-400 hover:text-blue-300 underline"
+                        >
+                          Enable location
+                        </button>
+                      </>
+                    )}
+                    {locationStatus === 'error' && (
+                      <>
+                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                        <span>Location not supported</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Flight Search Form */}
+          {activeSearchType === 'flights' && (
+            <div className="max-w-4xl mx-auto mb-8">
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Flight Search</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                  <AirportInput
+                    id="departure"
+                    label="From"
+                    value={flightParams.departure}
+                    onChange={(value) => setFlightParams({...flightParams, departure: value})}
+                    placeholder="JFK or New York"
+                  />
+
+                  <AirportInput
+                    id="arrival"
+                    label="To"
+                    value={flightParams.arrival}
+                    onChange={(value) => setFlightParams({...flightParams, arrival: value})}
+                    placeholder="LAX or Los Angeles"
+                  />
+
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">Departure</label>
+                    <input
+                      type="date"
+                      value={flightParams.outbound_date}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        setFlightParams({...flightParams, outbound_date: e.target.value});
+                        if (flightParams.flight_type === '1' && flightParams.return_date) {
+                          const newDeparture = new Date(e.target.value);
+                          const currentReturn = new Date(flightParams.return_date);
+                          if (currentReturn <= newDeparture) {
+                            const nextDay = new Date(newDeparture);
+                            nextDay.setDate(nextDay.getDate() + 1);
+                            setFlightParams(prev => ({
+                              ...prev,
+                              outbound_date: e.target.value,
+                              return_date: nextDay.toISOString().split('T')[0]
+                            }));
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+
+                  {flightParams.flight_type === '1' && (
+                    <div>
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">Return</label>
+                      <input
+                        type="date"
+                        value={flightParams.return_date}
+                        min={flightParams.outbound_date || new Date().toISOString().split('T')[0]}
+                        onChange={(e) => setFlightParams({...flightParams, return_date: e.target.value})}
+                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-red-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">Trip Type</label>
+                    <select
+                      value={flightParams.flight_type}
+                      onChange={(e) => setFlightParams({...flightParams, flight_type: e.target.value})}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-red-500"
                     >
-                      <Icon className="h-4 w-4" />
-                      <span>{category.label}</span>
-                    </button>
-                  );
-                })}
+                      <option value="1">Round trip</option>
+                      <option value="2">One way</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">Class</label>
+                    <select
+                      value={flightParams.travel_class}
+                      onChange={(e) => setFlightParams({...flightParams, travel_class: e.target.value})}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-red-500"
+                    >
+                      <option value="1">Economy</option>
+                      <option value="2">Premium Economy</option>
+                      <option value="3">Business</option>
+                      <option value="4">First</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">Passengers</label>
+                    <select
+                      value={flightParams.adults}
+                      onChange={(e) => setFlightParams({...flightParams, adults: e.target.value})}
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-red-500"
+                    >
+                      {[1,2,3,4,5,6,7,8,9].map(num => (
+                        <option key={num} value={num.toString()}>{num} adult{num > 1 ? 's' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (!flightParams.departure.trim()) {
+                      setError('Please enter a departure airport or city.');
+                      return;
+                    }
+                    if (!flightParams.arrival.trim()) {
+                      setError('Please enter an arrival airport or city.');
+                      return;
+                    }
+                    if (!flightParams.outbound_date) {
+                      setError('Please select a departure date.');
+                      return;
+                    }
+                    if (flightParams.flight_type === '1' && !flightParams.return_date) {
+                      setError('Please select a return date for round trip.');
+                      return;
+                    }
+
+                    const departureDate = new Date(flightParams.outbound_date);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    if (departureDate < today) {
+                      setError('Departure date cannot be in the past.');
+                      return;
+                    }
+
+                    if (flightParams.flight_type === '1') {
+                      const returnDate = new Date(flightParams.return_date);
+                      if (returnDate <= departureDate) {
+                        setError('Return date must be after departure date.');
+                        return;
+                      }
+                    }
+
+                    setError(''); 
+                    handleSearch(undefined, 'flights', 1);
+                  }}
+                  disabled={loading || !flightParams.departure || !flightParams.arrival}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 disabled:from-zinc-700 disabled:to-zinc-600 rounded-lg font-medium text-white transition-all duration-200 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Searching flights...</span>
+                    </div>
+                  ) : (
+                    'Search Flights'
+                  )}
+                </button>
               </div>
             </div>
           )}
@@ -525,7 +1113,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center space-x-2 text-sm text-zinc-400">
                   <Zap className="h-4 w-4 text-yellow-400" />
-                  <span>Powered by SerpAPI</span>
+                  <span>Powered by Various APIs</span>
                 </div>
               </div>
               <p className="text-zinc-500 text-sm">
