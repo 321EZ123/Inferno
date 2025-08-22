@@ -86,7 +86,7 @@ The search engine is configured with:
 - **Icons**: Lucide React
 - **HTTP Client**: Axios
 - **Search API**: SerpAPI
-- **Deployment**: Netlify-ready
+- **Deployment**: Vercel-ready
 
 ## 📱 Browser Support
 
@@ -126,7 +126,7 @@ src/
 
 ## 📄 License
 
-This project is open source and available under the [MIT License](LICENSE).
+This project is open source and available under a custom [license](LICENSE).
 
 ## 🆘 Support
 
