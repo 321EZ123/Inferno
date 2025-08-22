@@ -132,6 +132,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 - For SerpAPI issues: [SerpAPI Support](https://serpapi.com/contact)
 - For project issues: Create an issue in this repository
+- For other issues: [Join our Discord and open a support ticket](https://discord.gg/Gv4rVt2SJp)
 
 ## 🔗 Links
 
