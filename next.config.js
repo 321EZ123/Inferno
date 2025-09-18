@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ["*.preview.same-app.com"],
+  allowedDevOrigins: ["inferno.xst.cl"],
   images: {
     unoptimized: true,
     domains: [
